@@ -1,6 +1,5 @@
-{{- if not .Values.highAvailability.enabled }}
-apiVersion: {{ include "common.capabilities.deployment.apiVersion" . }}
-kind: Deployment
+apiVersion: {{ include "common.capabilities.statefulset.apiVersion" . }}
+kind: StatefulSet
 metadata:
   name:  {{ include "flink.jobmanager.fullname" . }}
   namespace: {{ include "common.names.namespace" . | quote }}
@@ -17,6 +16,7 @@ spec:
   selector:
     matchLabels: {{- include "common.labels.matchLabels" . | nindent 6 }}
   replicas: {{ .Values.jobmanager.replicaCount }}
+  serviceName: {{ include "flink.headlessServiceName" . }}
   {{- if and .Values.jobmanager.updateStrategy (not .Values.highAvailability.enabled) }}
   strategy: {{- toYaml .Values.jobmanager.updateStrategy | nindent 4 }}
   {{- end }}
@@ -30,11 +30,15 @@ spec:
         {{- end }}
       {{- if .Values.jobmanager.podAnnotations }}
       annotations:
+        service.alpha.kubernetes.io/tolerate-endpoint-disruptive-updates: "true"
         {{- if .Values.jobmanager.podAnnotations }}
         {{- include "common.tplvalues.render" (dict "value" .Values.jobmanager.podAnnotations "context" $) | nindent 8 }}
         {{- end }}
       {{- end }}
     spec:
+      dnsConfig:
+        searches:
+          - jobmanager-x.default.svc.cluster.local
       {{- if .Values.jobmanager.schedulerName }}
       schedulerName: {{ .Values.jobmanager.schedulerName }}
       {{- end }}
@@ -60,6 +64,22 @@ spec:
       topologySpreadConstraints: {{- include "common.tplvalues.render" (dict "value" .Values.jobmanager.topologySpreadConstraints "context" $) | nindent 8 }}
       {{- end }}
       initContainers:
+        - name: {{ printf "%s-install-libs-initcontainer" (include "common.names.fullname" .) }}
+          image: {{ include "flink.libsJob.image" . }}
+          imagePullPolicy: {{ .Values.libs.image.pullPolicy  }}
+          command: [ "sh",
+                     "-e",
+                     "/tmp/scripts/install_libs.sh" ]
+          resources: {{- toYaml .Values.libs.resources | nindent 12 }}
+          securityContext: {{- .Values.libs.containerSecurityContext | toYaml | nindent 12 }}
+          volumeMounts:
+            - name: install-libs
+              mountPath: /tmp/scripts/
+            - name: provisioning
+              mountPath: /bitnami/flink-provisioning
+          {{- if .Values.libs.resources }}
+          resources: {{- toYaml .Values.libs.resources | nindent 12 }}
+          {{- end }}
       {{- if .Values.jobmanager.initContainers }}
       {{- include "common.tplvalues.render" (dict "value" .Values.jobmanager.initContainers "context" $) | nindent 8 }}
       {{- end }}
@@ -70,7 +90,6 @@ spec:
           {{- if .Values.jobmanager.containerSecurityContext.enabled }}
           securityContext: {{- omit .Values.jobmanager.containerSecurityContext "enabled" | toYaml | nindent 12 }}
           {{- end }}
-          #command: ["/opt/bitnami/flink/bin/jobmanager.sh", "start-foreground"]
           {{- if .Values.diagnosticMode.enabled }}
           command: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.command "context" $) | nindent 12 }}
           {{- else if .Values.jobmanager.command }}
@@ -96,8 +115,32 @@ spec:
               value: jobmanager
             - name: FLINK_CFG_JOBMANAGER_BIND__HOST
               value: 0.0.0.0
-            - name: FLINK_CFG_JOBMANAGER_RPC_ADDRESS
+            - name: POD_NAME
+              {{- if .Values.highAvailability.enabled}}
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+              {{- else }}
               value: flink-jobmanager
+              {{- end}}
+            - name: HADOOP_CLASSPATH
+              value: /opt/bitnami/flink/plugins/s3/flink-s3-fs-hadoop-1.16.0.jar
+            - name: FLINK_CFG_JOBMANAGER_RPC_ADDRESS
+              value: {{ printf "$(POD_NAME).%s" (include "flink.headlessServiceName" .) }}
+            {{- if .Values.highAvailability.enabled}}
+            - name: FLINK_CFG_HIGH__AVAILABILITY_TYPE
+              value: zookeeper
+            - name: FLINK_CFG_HIGH__AVAILABILITY_ZOOKEEPER_QUORUM
+              value: {{ include "flink.zookeeper.fullAddress" . }}
+            - name: FLINK_CFG_HIGH__AVAILABILITY_PATH_ROOT
+              value: {{.Values.highAvailability.pathRoot}}
+            - name: FLINK_CFG_HIGH__AVAILABILITY_CLUSTER__ID
+              value: {{.Values.highAvailability.clusterId}}
+            - name: FLINK_CFG_HIGH__AVAILABILITY_STORAGE_DIR
+              value: {{ include "flink.minio.uri" . }}
+            - name: ENABLE_BUILT_IN_PLUGINS
+              value: flink-s3-fs-hadoop-1.16.0.jar;hadoop-mapreduce-client-core-3.3.4.jar
+            {{- end}}
             - name: BITNAMI_DEBUG
               value: {{ ternary "true" "false" .Values.image.debug | quote }}
             {{- if .Values.jobmanager.extraEnvVars }}
@@ -119,7 +162,7 @@ spec:
           startupProbe: {{- include "common.tplvalues.render" (dict "value" (omit .Values.jobmanager.startupProbe "enabled") "context" $) | nindent 12 }}
             httpGet:
               path: /
-              port: web
+              port: admin
           {{- end }}
           {{- if .Values.jobmanager.customLivenessProbe }}
           livenessProbe: {{- include "common.tplvalues.render" (dict "value" .Values.jobmanager.customLivenessProbe "context" $) | nindent 12 }}
@@ -127,7 +170,7 @@ spec:
           livenessProbe: {{- include "common.tplvalues.render" (dict "value" (omit .Values.jobmanager.livenessProbe "enabled") "context" $) | nindent 12 }}
             httpGet:
               path: /
-              port: web
+              port: admin
           {{- end }}
           {{- if .Values.jobmanager.customReadinessProbe }}
           readinessProbe: {{- include "common.tplvalues.render" (dict "value" .Values.jobmanager.customReadinessProbe "context" $) | nindent 12 }}
@@ -135,12 +178,15 @@ spec:
           readinessProbe: {{- include "common.tplvalues.render" (dict "value" (omit .Values.jobmanager.readinessProbe "enabled") "context" $) | nindent 12 }}
             httpGet:
               path: /
-              port: web
+              port: admin
           {{- end }}
           {{- end }}
           {{- if .Values.jobmanager.resources }}
           resources: {{- toYaml .Values.jobmanager.resources | nindent 12 }}
           {{- end }}
+          volumeMounts:
+            - name: provisioning
+              mountPath: /bitnami/flink-provisioning
           {{- if .Values.jobmanager.extraVolumeMounts }}
             {{- include "common.tplvalues.render" ( dict "value" .Values.jobmanager.extraVolumeMounts "context" $) | nindent 12 }}
           {{- end }}
@@ -148,7 +194,16 @@ spec:
         {{- include "common.tplvalues.render" ( dict "value" .Values.jobmanager.sidecars "context" $) | nindent 8 }}
         {{- end }}
       volumes:
+       {{- if .Values.libs.install }}
+        - name: install-libs
+          configMap:
+            name: {{ printf "%s-install-libs-configmap" (include "common.names.fullname" .) }}
+            items:
+              - key: install_libs.sh
+                path: install_libs.sh
+        - name: provisioning
+          emptyDir: {}
+        {{- end }}
         {{- if .Values.jobmanager.extraVolumes }}
         {{- include "common.tplvalues.render" ( dict "value" .Values.jobmanager.extraVolumes "context" $) | nindent 8 }}
         {{- end }}
-{{- end }}

@@ -2,5 +2,11 @@ dependencies:
 - name: common
   repository: https://charts.bitnami.com/bitnami
   version: 2.2.3
-digest: sha256:2c7165542fc01b9e98b577cd8b1095d0ed8267d34b97b6e581a1176bfb8e4dcb
-generated: "2023-02-13T15:32:00.594739+01:00"
+- name: zookeeper
+  repository: https://charts.bitnami.com/bitnami
+  version: 11.1.2
+- name: minio
+  repository: https://charts.bitnami.com/bitnami
+  version: 12.1.5
+digest: sha256:f769697d0009e2bd01f9de1a55a0265dcc7044acdb9ea44be6af1f8ff50a116a
+generated: "2023-02-17T15:19:00.463452+01:00"

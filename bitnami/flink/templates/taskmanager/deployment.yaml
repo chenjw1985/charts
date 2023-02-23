@@ -59,6 +59,23 @@ spec:
       topologySpreadConstraints: {{- include "common.tplvalues.render" (dict "value" .Values.taskmanager.topologySpreadConstraints "context" $) | nindent 8 }}
       {{- end }}
       initContainers:
+        - name: {{ printf "%s-install-libs-initcontainer" (include "common.names.fullname" .) }}
+          image: {{ include "flink.libsJob.image" . }}
+          imagePullPolicy: {{ .Values.libs.image.pullPolicy  }}
+          command: [ "sh",
+                     "-e",
+                     "/tmp/scripts/install_libs.sh" ]
+          resources: {{- toYaml .Values.libs.resources | nindent 12 }}
+          securityContext: {{- .Values.libs.containerSecurityContext | toYaml | nindent 12 }}
+          volumeMounts:
+            - name: install-libs
+              mountPath: /tmp/scripts/
+            - name: provisioning
+              mountPath: /bitnami/flink-provisioning
+              subPath: lib
+          {{- if .Values.libs.resources }}
+          resources: {{- toYaml .Values.libs.resources | nindent 12 }}
+          {{- end }}
       {{- if .Values.taskmanager.initContainers }}
       {{- include "common.tplvalues.render" (dict "value" .Values.taskmanager.initContainers "context" $) | nindent 8 }}
       {{- end }}
@@ -91,12 +108,28 @@ spec:
             - name: FLINK_MODE
               value: taskmanager
             - name: FLINK_CFG_JOBMANAGER_RPC_ADDRESS
-              value: flink-jobmanager
+              value: flink-jobmanager-0.flink-headless
+            - name: FLINK_CFG_JOBMANAGER_RPC_ADDRESS
+              value: flink-jobmanager-0.flink-headless
+            - name: FLINK_CFG_HIGH__AVAILABILITY_TYPE
+              value: zookeeper
+            - name: FLINK_CFG_HIGH__AVAILABILITY_ZOOKEEPER_QUORUM
+              value: {{ include "flink.zookeeper.fullAddress" . }}
+            - name: FLINK_CFG_HIGH__AVAILABILITY_PATH_ROOT
+              value: {{.Values.highAvailability.pathRoot}}
+            - name: FLINK_CFG_HIGH__AVAILABILITY_CLUSTER__ID
+              value: {{.Values.highAvailability.clusterId}}
+            - name: FLINK_CFG_HIGH__AVAILABILITY_STORAGE_DIR
+              value: {{ include "flink.minio.uri" . }}
             - name: BITNAMI_DEBUG
               value: {{ ternary "true" "false" .Values.image.debug | quote }}
             {{- if .Values.taskmanager.extraEnvVars }}
               {{- include "common.tplvalues.render" (dict "value" .Values.taskmanager.extraEnvVars "context" $) | nindent 12 }}
             {{- end }}
+          volumeMounts:
+            - name: provisioning
+              mountPath: /bitnami/flink-provisioning
+              subPath: lib
           envFrom:
             {{- if .Values.taskmanager.extraEnvVarsCM }}
             - configMapRef:
@@ -142,6 +175,16 @@ spec:
         {{- include "common.tplvalues.render" ( dict "value" .Values.taskmanager.sidecars "context" $) | nindent 8 }}
         {{- end }}
       volumes:
+        {{- if .Values.libs.install }}
+        - name: install-libs
+          configMap:
+            name: {{ printf "%s-install-libs-configmap" (include "common.names.fullname" .) }}
+            items:
+              - key: install_libs.sh
+                path: install_libs.sh
+        - name: provisioning
+          emptyDir: { }
+        {{- end }}
         {{- if .Values.taskmanager.extraVolumes }}
         {{- include "common.tplvalues.render" ( dict "value" .Values.taskmanager.extraVolumes "context" $) | nindent 8 }}
         {{- end }}

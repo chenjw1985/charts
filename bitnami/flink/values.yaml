@@ -40,7 +40,7 @@ commonAnnotations: {}
 diagnosticMode:
   ## @param diagnosticMode.enabled Enable diagnostic mode (all probes will be disabled and the command will be overridden)
   ##
-  enabled: false
+  enabled: true
   ## @param diagnosticMode.command Command to override all containers in the deployment
   ##
   command:
@@ -112,7 +112,7 @@ jobmanager:
   extraEnvVarsSecret: ""
   ## @param jobmanager.replicaCount Number of Apache Flink Jobmanager replicas
   ##
-  replicaCount: 1
+  replicaCount: 3
   ## Configure extra options for container's liveness, readiness and startup probes
   ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#configure-probes
   ## @param jobmanager.livenessProbe.enabled Enable livenessProbe on Jobmanager nodes
@@ -313,8 +313,8 @@ jobmanager:
   ##
   containerSecurityContext:
     enabled: true
-    runAsUser: 1001
-    runAsNonRoot: true
+    runAsUser: 0
+    runAsNonRoot: false
   ## @param jobmanager.podAnnotations Additional pod annotations
   ## ref: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/
   ##
@@ -418,7 +418,7 @@ taskmanager:
   extraEnvVarsSecret: ""
   ## @param taskmanager.replicaCount Number of Apache Flink replicas
   ##
-  replicaCount: 1
+  replicaCount: 2
   ## Configure extra options for container's liveness, readiness and startup probes
   ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#configure-probes
   ## @param taskmanager.livenessProbe.enabled Enable livenessProbe on taskmanager nodes
@@ -610,8 +610,8 @@ taskmanager:
   ##
   containerSecurityContext:
     enabled: true
-    runAsUser: 1001
-    runAsNonRoot: true
+    runAsUser: 0
+    runAsNonRoot: false
   ## @param taskmanager.podAnnotations Additional pod annotations
   ## ref: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/
   ##
@@ -687,3 +687,74 @@ taskmanager:
   ## @param taskmanager.sidecars Add additional sidecar containers to the flink pods
   ##
   sidecars: []
+
+## @section Apache FLink plugin provisioning parameters
+##
+libs:
+  ## @param plugins.install List of plugin URLS to download and install
+  ## For example:
+  ## plugins:
+  ##  install:
+  ##    - "https://repo1.maven.org/maven2/org/apache/flink/flink-s3-fs-hadoop/1.16.1/flink-s3-fs-hadoop-1.16.1.jar"
+  ##    - "https://repo1.maven.org/maven2/org/apache/flink/flink-s3-fs-presto/1.16.1/flink-s3-fs-presto-1.16.1.jar"
+  ##
+  install:
+    - url: "https://repo1.maven.org/maven2/org/apache/flink/flink-s3-fs-hadoop/1.16.0/flink-s3-fs-hadoop-1.16.0.jar"
+      name: flink-s3-fs-hadoop-1.16.0
+  ## @param plugins.netrcCreds .netrc secret file with a key "netrc" to use basic auth while downloading plugins
+  ##
+  netrcCreds: ""
+  ## @param plugins.noCheckCertificate Set to true to not validate the server's certificate to download plugin
+  ##
+  noCheckCertificate: true
+  ## Bitnami Shell image
+  ## ref: https://hub.docker.com/r/bitnami/bitnami-shell/tags/
+  ## @param plugins.image.registry Bitnami Shell image registry
+  ## @param plugins.image.repository Bitnami Shell image repository
+  ## @param plugins.image.tag Bitnami Shell image tag (immutable tags are recommended)
+  ## @param plugins.image.digest Bitnami Shell image digest in the way sha256:aa.... Please note this parameter, if set, will override the tag
+  ## @param plugins.image.pullPolicy Bitnami Shell image pull policy
+  ## @param plugins.image.pullSecrets Bitnami Shell image pull secrets
+  ##
+  image:
+    registry: docker.io
+    repository: bitnami/bitnami-shell
+    tag: 11-debian-11-r63
+    digest: ""
+    pullPolicy: IfNotPresent
+    ## Optionally specify an array of imagePullSecrets.
+    ## Secrets must be manually created in the namespace.
+    ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+    ## e.g:
+    ## pullSecrets:
+    ##   - myRegistryKeySecretName
+    ##
+    pullSecrets: []
+  ## Init container's resource requests and limits
+  ## ref: https://kubernetes.io/docs/user-guide/compute-resources/
+  ## @param plugins.resources.limits The resources limits for the init container
+  ## @param plugins.resources.requests The requested resources for the init container
+  ##
+  resources:
+    limits: {}
+    requests: {}
+  ## Init container Container Security Context
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-container
+  ## @param plugins.containerSecurityContext.runAsUser Set init container's Security Context runAsUser
+  ## NOTE: when runAsUser is set to special value "auto", init container will try to chown the
+  ##   data folder to auto-determined user&group, using commands: `id -u`:`id -G | cut -d" " -f2`
+  ##   "auto" is especially useful for OpenShift which has scc with dynamic user ids (and 0 is not allowed)
+  ##
+  containerSecurityContext:
+    runAsUser: 0
+    runAsNonRoot: false
+
+highAvailability:
+  enabled: true
+  pathRoot: /flink
+  clusterId: cluster
+  storageDir: s3://flink-minio/recovery
+
+minio:
+  defaultBuckets: "flink-cluster"
+

@@ -39,7 +39,7 @@ Create a default fully qualified app name.
 We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
 */}}
 {{- define "flink.minio.uri" -}}
-{{- printf "s3://%s/%s" (include "common.names.dependency.fullname" (dict "chartName" "minio" "chartValues" .Values.minio "context" $)) .Values.minio.defaultBuckets -}}
+{{- printf "s3://%s:%d/%s" (include "common.names.dependency.fullname"  (dict "chartName" "minio" "chartValues" .Values.minio "context" $)) (.Values.minio.service.ports.api | int) .Values.minio.defaultBuckets -}}
 {{- end -}}
 
 {{/*

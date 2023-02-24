@@ -138,8 +138,22 @@ spec:
               value: {{.Values.highAvailability.clusterId}}
             - name: FLINK_CFG_HIGH__AVAILABILITY_STORAGE_DIR
               value: {{ include "flink.minio.uri" . }}
+            - name: FLINK_CFG_FS_S3A_PATH_STYLE_ACCESS
+              value: "true"
+            - name: FLINK_CFG_FS_S3A_ACCESS_KEY
+              value: {{ include "flink.minio.uri" . }}
+            - name: FLINK_CFG_FS_S3A_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio
+                  key: root-user
+            - name: FLINK_CFG_FS_S3A_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: minio
+                  key: root-password
             - name: ENABLE_BUILT_IN_PLUGINS
-              value: flink-s3-fs-hadoop-1.16.0.jar;hadoop-mapreduce-client-core-3.3.4.jar
+              value: flink-s3-fs-hadoop-1.16.0.jar
             {{- end}}
             - name: BITNAMI_DEBUG
               value: {{ ternary "true" "false" .Values.image.debug | quote }}
